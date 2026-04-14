@@ -25,7 +25,6 @@
 # Fortran module files
 *.mod
 *.smod
-*.user
 
 # Compiled Static libraries
 *.lai
@@ -41,3 +40,5 @@
 # debug information files
 *.dwo
 /build
+*txt.user
+

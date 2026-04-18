@@ -1,0 +1,41 @@
+#pragma once
+
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_sdlrenderer2.h"
+#include <SDL.h>
+#include <array>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+struct WindowDeleter {
+  void operator()(SDL_Window *w) const { SDL_DestroyWindow(w); }
+};
+
+struct RendererDeleter {
+  void operator()(SDL_Renderer *r) const { SDL_DestroyRenderer(r); }
+};
+
+class MainWindow {
+  MainWindow(const MainWindow &) = delete;
+  MainWindow &operator=(const MainWindow &) = delete;
+
+public:
+  MainWindow();
+  ~MainWindow();
+
+  void Run();
+
+private:
+  void DrawNextFrame();
+  void BuildMainThemeFrame();
+
+private:
+  bool _running;
+  ImGuiWindowFlags _winFlags;
+
+  std::unique_ptr<SDL_Window, WindowDeleter> _window;
+  std::unique_ptr<SDL_Renderer, RendererDeleter> _renderer;
+};

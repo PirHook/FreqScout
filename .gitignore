@@ -41,4 +41,5 @@
 *.dwo
 /build
 *txt.user
+*.txt
 

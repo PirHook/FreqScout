@@ -1,11 +1,14 @@
 #include <iostream>
-#include "hdr/utils/terminalUtil.h"
+#include <reproc++/reproc.hpp>
+#include <string>
+#include <vector>
 
-int main(int argc, char* argv[])
-{
-    while(1){
-        std::cout << "ITERATING_1\n";
-        std::cout << exec("rtl_test").first << std::endl;
-        std::cout << "ITERATING_2\n";
-    }
+#include "hdr/gui/MainWindow.h"
+
+int main(int argc, char *argv[]) {
+  MainWindow w;
+
+  w.Run();
+
+  return 0;
 }

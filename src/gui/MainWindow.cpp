@@ -7,7 +7,8 @@ MainWindow::MainWindow() : _running(true) {
   }
 
   _window.reset(SDL_CreateWindow("FreqScout", SDL_WINDOWPOS_CENTERED,
-                                 SDL_WINDOWPOS_CENTERED, 800, 480, 0));
+                                 SDL_WINDOWPOS_CENTERED, _winWidth, _winHeight,
+                                 0));
 
   if (!_window) {
     std::cout << "Can't create Window!\n";
@@ -30,7 +31,6 @@ MainWindow::~MainWindow() {
   ImGui_ImplSDLRenderer2_Shutdown();
   ImGui_ImplSDL2_Shutdown();
   ImGui::DestroyContext();
-
   SDL_Quit();
 }
 
@@ -39,10 +39,11 @@ void MainWindow::Run() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       ImGui_ImplSDL2_ProcessEvent(&event);
-
-      if (event.type == SDL_QUIT)
+      if (event.type == SDL_QUIT) {
         _running = false;
+      }
     }
+    _gsmScanner.update();
     DrawNextFrame();
   }
 }
@@ -52,9 +53,7 @@ void MainWindow::DrawNextFrame() {
   ImGui::Render();
   SDL_SetRenderDrawColor(_renderer.get(), 0, 0, 0, 255);
   SDL_RenderClear(_renderer.get());
-
   ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), _renderer.get());
-
   SDL_RenderPresent(_renderer.get());
 }
 
@@ -64,17 +63,24 @@ void MainWindow::BuildMainThemeFrame() {
   ImGui::NewFrame();
 
   ImGui::SetNextWindowPos(ImVec2(0, 0));
-  ImGui::SetNextWindowSize(ImVec2(800, 480));
+  ImGui::SetNextWindowSize(ImVec2(_winWidth, _winHeight));
 
   ImGui::Begin("Control Panel", nullptr, _winFlags);
 
   ImGui::Text("FreqScout. GSM Signal Analyze utility");
 
-  if (ImGui::Button("Start Scan")) {
-    ImGui::Separator();
+  static bool isScanning = false;
+  if (ImGui::Button("Start Scan") && !isScanning) {
+    _gsmScanner.Start();
+    isScanning = true;
+  }
 
+  if (isScanning) {
+    ImGui::Separator();
     ImGui::BeginChild("Output", ImVec2(0, 0), true);
-    ImGui::TextUnformatted("BUTTON CLICKED!");
+    ImGui::TextUnformatted(_gsmScanner.getOutput().c_str());
+    if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+      ImGui::SetScrollHereY(1.0f);
     ImGui::EndChild();
   }
 

@@ -1,11 +1,10 @@
 #include <iostream>
-#include <reproc++/reproc.hpp>
 #include <string>
 #include <vector>
 
 #include "hdr/gui/MainWindow.h"
 
-int main(int argc, char *argv[]) {
+int main() {
   MainWindow w;
 
   w.Run();

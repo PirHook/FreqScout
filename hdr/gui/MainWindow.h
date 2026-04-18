@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "../utils/Scanner.h"
+
 struct WindowDeleter {
   void operator()(SDL_Window *w) const { SDL_DestroyWindow(w); }
 };
@@ -33,9 +35,14 @@ private:
   void BuildMainThemeFrame();
 
 private:
+  const int16_t _winWidth = 800;
+  const int16_t _winHeight = 480;
   bool _running;
+
   ImGuiWindowFlags _winFlags;
 
   std::unique_ptr<SDL_Window, WindowDeleter> _window;
   std::unique_ptr<SDL_Renderer, RendererDeleter> _renderer;
+
+  Scanner _gsmScanner;
 };

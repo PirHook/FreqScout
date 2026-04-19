@@ -37,7 +37,10 @@ private:
 private:
   const int16_t _winWidth = 800;
   const int16_t _winHeight = 480;
+  uint16_t _frameCounter;
   bool _running;
+  bool _isScanning;
+  std::string _winContext;
 
   ImGuiWindowFlags _winFlags;
 

@@ -1,81 +1,70 @@
 #include "../../hdr/utils/Scanner.h"
 
+Scanner::~Scanner() { Stop(); }
+
 void Scanner::Start() {
-  if (_running)
-    return;
-
-  reproc::options options;
-  options.redirect.parent = false;
-
+  std::cout << "START CALLED\n";
+  _stopActs = {{reproc::stop::terminate, reproc::milliseconds(5000)},
+               {reproc::stop::kill, reproc::milliseconds(2000)},
+               {}};
+  _options.stop = _stopActs;
+  // stdbuf -oL -eL python3 -u $(which grgsm_scanner) -b GSM900 -g 40 -s 2e6
+  // --speed 29 -v
   std::vector<std::string> cmd = {
-      "grgsm_scanner", "-b",      "GSM900", "-g", "40", "-s",
-      "2e6",           "--speed", "29",     "-v"};
-
-  auto error = _process.start(cmd, options);
-  if (!error)
-    _running = true;
-}
-
-void Scanner::update() {
-  if (!_running)
+      "stdbuf",  "-oL",    "-eL",
+      "python3", "-u",     "/usr/local/bin/grgsm_scanner",
+      "-b",      "GSM900", "-g",
+      "40",      "-s",     "2e6",
+      "--speed", "29",     "-v"};
+  _ec = _process.start(cmd, _options);
+  if (_ec == std::errc::no_such_file_or_directory) {
+    std::cout << "Program not found. Make sure it's available from the PATH.";
+    std::cout << _ec.value() << std::endl;
     return;
-
-  char buffer[1024];
-  auto [bytes, err] =
-      _process.read(reproc::stream::out, reinterpret_cast<uint8_t *>(buffer),
-                    sizeof(buffer) - 1);
-
-  if (!err) {
-    buffer[bytes] = '\0';
-    _output += buffer;
-    parse_buffer();
-  } else if (err) {
-    _running = false;
+  } else if (_ec) {
+    std::cout << fail(_ec) << std::endl;
+    return;
   }
+
+  _drainTask = std::async(std::launch::async, [this]() {
+    reproc::sink::thread_safe::string sink(_output, _mtx);
+    return reproc::drain(_process, sink, sink);
+  });
 }
 
-void Scanner::parse_buffer() {
-  std::regex pattern(
-      R"(ARFCN:\s*(\d+),\s*Freq:\s*([\d\.]+)M,\s*CID:\s*(\d+),\s*LAC:\s*(\d+),\s*MCC:\s*(\d+),\s*MNC:\s*(\d+),\s*Pwr:\s*(-?\d+))");
+void Scanner::Stop() {
+  int status = 0;
+  std::tie(status, _ec) = _process.stop(_options.stop);
+  if (_ec) {
+    std::cout << fail(_ec) << std::endl;
+  }
+  std::cout << status << std::endl;
+}
 
-  auto it = std::sregex_iterator(_output.begin(), _output.end(), pattern);
-  auto end = std::sregex_iterator();
-
-  for (; it != end; ++it) {
-    std::smatch match = *it;
-
-    int arfcn = std::stoi(match[1]);
-    double freq = std::stod(match[2]);
-    int cid = std::stoi(match[3]);
-    int lac = std::stoi(match[4]);
-    int mcc = std::stoi(match[5]);
-    int mnc = std::stoi(match[6]);
-    int pwr = std::stoi(match[7]);
-
+std::string Scanner::GetOutput() {
+  if (_drainTask.valid() && _drainTask.wait_for(std::chrono::milliseconds(
+                                500)) != std::future_status::ready) {
     std::lock_guard<std::mutex> lock(_mtx);
-
-    auto found =
-        std::find_if(_stations.begin(), _stations.end(),
-                     [arfcn](const Station &s) { return s.arfcn == arfcn; });
-
-    if (found == _stations.end()) {
-      Station gsmStation;
-      gsmStation.arfcn = arfcn;
-      gsmStation.freq = freq;
-      gsmStation.cellId = static_cast<uint8_t>(cid);
-      gsmStation.lac = static_cast<uint8_t>(lac);
-      gsmStation.mcc = static_cast<uint8_t>(mcc);
-      gsmStation.mnc = static_cast<uint8_t>(mnc);
-      gsmStation.pwr = static_cast<int8_t>(pwr);
-      _stations.push_back(gsmStation);
-    } else {
-      found->pwr = pwr;
-      found->cellId = cid;
-      found->lac = lac;
-    }
+    std::string str = _output;
+    // _output.clear();
+    return str;
   }
 
-  if (_output.size() > 10000) {
-    _output.clear();
+  if (_drainTask.valid()) {
+    _ec = _drainTask.get();
   }
+
+  std::lock_guard<std::mutex> lock(_mtx);
+  if (_output.empty() && _ec) {
+    return "Error: " + _ec.message();
+  }
+
+  std::string str = _output;
+  // _output.clear();
+  return str;
+}
+
+int Scanner::fail(std::error_code ec) {
+  std::cerr << ec.message();
+  return ec.value();
 }

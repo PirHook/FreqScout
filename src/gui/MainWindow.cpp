@@ -1,6 +1,7 @@
 #include "../../hdr/gui/MainWindow.h"
 
-MainWindow::MainWindow() : _running(true) {
+MainWindow::MainWindow()
+    : _running(true), _frameCounter(0), _isScanning(false) {
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     std::cerr << "SDL init error\n";
     std::terminate();
@@ -43,13 +44,20 @@ void MainWindow::Run() {
         _running = false;
       }
     }
-    _gsmScanner.update();
+
+    _frameCounter == 1024 ? _frameCounter = 0 : _frameCounter;
+
+    BuildMainThemeFrame();
+
     DrawNextFrame();
+
+    _frameCounter++;
+
+    SDL_Delay(8);
   }
 }
 
 void MainWindow::DrawNextFrame() {
-  BuildMainThemeFrame();
   ImGui::Render();
   SDL_SetRenderDrawColor(_renderer.get(), 0, 0, 0, 255);
   SDL_RenderClear(_renderer.get());
@@ -64,21 +72,22 @@ void MainWindow::BuildMainThemeFrame() {
 
   ImGui::SetNextWindowPos(ImVec2(0, 0));
   ImGui::SetNextWindowSize(ImVec2(_winWidth, _winHeight));
-
   ImGui::Begin("Control Panel", nullptr, _winFlags);
 
   ImGui::Text("FreqScout. GSM Signal Analyze utility");
 
-  static bool isScanning = false;
-  if (ImGui::Button("Start Scan") && !isScanning) {
-    _gsmScanner.Start();
-    isScanning = true;
-  }
-
-  if (isScanning) {
+  if (!_isScanning) {
+    if (ImGui::Button("Start Scan")) {
+      _isScanning = true;
+      _gsmScanner.Start();
+    }
+  } else {
     ImGui::Separator();
     ImGui::BeginChild("Output", ImVec2(0, 0), true);
-    ImGui::TextUnformatted(_gsmScanner.getOutput().c_str());
+    if (!_frameCounter % 2) {
+      _winContext = _gsmScanner.GetOutput().c_str();
+    }
+    ImGui::TextUnformatted(_winContext.c_str());
     if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
       ImGui::SetScrollHereY(1.0f);
     ImGui::EndChild();

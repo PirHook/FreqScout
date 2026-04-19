@@ -1,37 +1,38 @@
 #pragma once
+#include <future>
+#include <iostream>
 #include <mutex>
-#include <regex>
-#include <reproc++/reproc.hpp>
 #include <string>
 #include <vector>
 
-struct Station {
-  int arfcn;
-  double freq;
-  uint32_t cellId;
-  uint16_t lac;
-  uint8_t mcc;
-  uint8_t mnc;
-  int8_t pwr;
-};
+#include <reproc++/drain.hpp>
+#include <reproc++/reproc.hpp>
+
+// struct Station {
+//   int arfcn;
+//   double freq;
+//   int cellId, lac, mcc, mnc, pwr;
+//   std::string toTableRecord() const; // Ваша реализация
+// };
 
 class Scanner {
 public:
+  Scanner() {}
+  ~Scanner();
+
   void Start();
-
-  void update();
-
-  bool is_running() const { return _running; }
-
-  std::string getOutput() { return _output; }
+  void Stop();
+  std::string GetOutput();
 
 private:
-  void parse_buffer();
+  int fail(std::error_code ec);
 
 private:
   reproc::process _process;
-  bool _running = false;
+  reproc::stop_actions _stopActs;
+  reproc::options _options;
+  std::error_code _ec;
   std::string _output;
-  std::vector<Station> _stations;
   std::mutex _mtx;
+  std::future<std::error_code> _drainTask;
 };

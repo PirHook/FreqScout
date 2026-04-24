@@ -40,12 +40,11 @@ private:
   uint16_t _frameCounter;
   bool _running;
   bool _isScanning;
-  std::string _winContext;
-
   ImGuiWindowFlags _winFlags;
 
   std::unique_ptr<SDL_Window, WindowDeleter> _window;
   std::unique_ptr<SDL_Renderer, RendererDeleter> _renderer;
+  std::vector<Station> _stations;
 
   Scanner _gsmScanner;
 };

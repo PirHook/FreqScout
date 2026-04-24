@@ -2,18 +2,25 @@
 #include <future>
 #include <iostream>
 #include <mutex>
+#include <regex>
+#include <set>
 #include <string>
 #include <vector>
 
 #include <reproc++/drain.hpp>
 #include <reproc++/reproc.hpp>
 
-// struct Station {
-//   int arfcn;
-//   double freq;
-//   int cellId, lac, mcc, mnc, pwr;
-//   std::string toTableRecord() const; // Ваша реализация
-// };
+struct Station {
+  int arfcn;
+  std::string freq;
+  int cid;
+  int lac;
+  std::string mcc;
+  std::string mnc;
+  int pwr;
+
+  bool operator<(const Station &other) const { return arfcn < other.arfcn; }
+};
 
 class Scanner {
 public:
@@ -22,10 +29,11 @@ public:
 
   void Start();
   void Stop();
-  std::string GetOutput();
+  std::vector<Station> GetStations();
 
 private:
   int fail(std::error_code ec);
+  void ParseBuffer(const std::string &buffer);
 
 private:
   reproc::process _process;
@@ -35,4 +43,5 @@ private:
   std::string _output;
   std::mutex _mtx;
   std::future<std::error_code> _drainTask;
+  std::set<Station> _stations;
 };

@@ -41,5 +41,5 @@
 *.dwo
 /build
 *txt.user
-*.txt
+scanCfg.txt
 

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../utils/Scanner.h"
+#include "../utils/StateManager.h"
 
 struct WindowDeleter {
   void operator()(SDL_Window *w) const { SDL_DestroyWindow(w); }
@@ -33,6 +34,10 @@ public:
 private:
   void DrawNextFrame();
   void BuildMainThemeFrame();
+  void BuildRestartFrame();
+  void BuildScanFrame();
+
+  void DrawStationTable();
 
 private:
   const int16_t _winWidth = 800;
@@ -47,4 +52,5 @@ private:
   std::vector<Station> _stations;
 
   Scanner _gsmScanner;
+  StateManager _stateMgr;
 };

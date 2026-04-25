@@ -47,7 +47,40 @@ void MainWindow::Run() {
 
     _frameCounter == 1024 ? _frameCounter = 0 : _frameCounter;
 
-    BuildMainThemeFrame();
+    ImGui_ImplSDLRenderer2_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(_winWidth, _winHeight));
+
+    switch (_stateMgr.GetState()) {
+    case State::eMAIN_THEME: {
+      BuildMainThemeFrame();
+      break;
+    }
+    case State::eSCANNING: {
+      BuildScanFrame();
+      break;
+    }
+    case State::eSCANNING_DATA_ACQUIRED: {
+      BuildScanFrame();
+      DrawStationTable();
+      break;
+    }
+    case State::eSCAN_DONE_DATA_ACQUIRED: {
+      BuildScanFrame();
+      DrawStationTable();
+      break;
+    }
+    case State::eSCAN_DONE_NO_DATA: {
+      BuildRestartFrame();
+      break;
+    }
+    default: {
+      std::cout << "Unhandled state\n";
+    }
+    }
 
     DrawNextFrame();
 
@@ -66,82 +99,96 @@ void MainWindow::DrawNextFrame() {
 }
 
 void MainWindow::BuildMainThemeFrame() {
-  ImGui_ImplSDLRenderer2_NewFrame();
-  ImGui_ImplSDL2_NewFrame();
-  ImGui::NewFrame();
-
-  ImGui::SetNextWindowPos(ImVec2(0, 0));
-  ImGui::SetNextWindowSize(ImVec2(_winWidth, _winHeight));
   ImGui::Begin("Control Panel", nullptr, _winFlags);
 
   ImGui::Text("FreqScout. GSM Signal Analyze utility");
 
-  if (!_isScanning) {
-    if (ImGui::Button("Start Scan", ImVec2(120, 40))) {
-      _isScanning = true;
-      _gsmScanner.Start();
-    }
-  } else {
-    if (ImGui::Button("Stop Scan", ImVec2(120, 40))) {
-      _isScanning = false;
-      _gsmScanner.Stop();
-    }
+  if (ImGui::Button("Start Scan", ImVec2(120, 40))) {
+    _stateMgr.SetState(State::eSCANNING);
+    _gsmScanner.Start();
+  }
+  ImGui::End();
+}
 
-    ImGui::Separator();
+void MainWindow::BuildRestartFrame() {
 
-    // Опрос сканера (раз в 2 кадра, как ты и хотел)
-    if (_frameCounter % 2 == 0) {
-      _stations = _gsmScanner.GetStations();
-    }
+  ImGui::Text("FreqScout. GSM Signal Analyze utility");
 
-    if (!_stations.empty()) {
-      // Флаги: границы, чередование цветов строк, возможность менять ширину
-      // колонок
-      static ImGuiTableFlags tableFlags =
-          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-          ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable;
-
-      // Запускаем таблицу
-      if (ImGui::BeginTable("GsmStationsTable", 7, tableFlags)) {
-        // Настройка заголовков
-        ImGui::TableSetupColumn("ARFCN");
-        ImGui::TableSetupColumn("Frequency");
-        ImGui::TableSetupColumn("CID");
-        ImGui::TableSetupColumn("LAC");
-        ImGui::TableSetupColumn("MCC");
-        ImGui::TableSetupColumn("MNC");
-        ImGui::TableSetupColumn("Pwr (dBm)");
-        ImGui::TableHeadersRow();
-
-        for (const auto &s : _stations) {
-          ImGui::TableNextRow();
-
-          ImGui::TableSetColumnIndex(0);
-          ImGui::Text("%d", s.arfcn);
-          ImGui::TableSetColumnIndex(1);
-          ImGui::TextUnformatted(s.freq.c_str());
-          ImGui::TableSetColumnIndex(2);
-          ImGui::Text("%d", s.cid);
-          ImGui::TableSetColumnIndex(3);
-          ImGui::Text("%d", s.lac);
-          ImGui::TableSetColumnIndex(4);
-          ImGui::TextUnformatted(s.mcc.c_str());
-          ImGui::TableSetColumnIndex(5);
-          ImGui::TextUnformatted(s.mnc.c_str());
-
-          // Цветовой индикатор для Power
-          ImGui::TableSetColumnIndex(6);
-          if (s.pwr > -75)
-            ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%d", s.pwr);
-          else
-            ImGui::Text("%d", s.pwr);
-        }
-        ImGui::EndTable();
-      }
-    } else {
-      ImGui::TextColored(ImVec4(1, 1, 0, 1), "Searching for GSM towers...");
-    }
+  if (ImGui::Button("Restart Scan", ImVec2(120, 40))) {
+    _stateMgr.SetState(State::eSCANNING);
+    _gsmScanner.Start();
   }
 
   ImGui::End();
+}
+
+void MainWindow::BuildScanFrame() {
+  if (ImGui::Button("Stop Scan", ImVec2(120, 40))) {
+    _stateMgr.SetState(State::eSCAN_DONE_DATA_ACQUIRED);
+
+    if (_stations.empty()) {
+      _stateMgr.SetState(State::eSCAN_DONE_NO_DATA);
+    }
+    _gsmScanner.Stop();
+  }
+
+  ImGui::Separator();
+
+  // Опрос сканера (раз в 2 кадра, как ты и хотел)
+  if (_frameCounter % 2 == 0) {
+    _stations = _gsmScanner.GetStations();
+  }
+
+  if (_stations.empty())
+    ImGui::TextColored(ImVec4(1, 1, 0, 1), "Searching for GSM towers...");
+  else
+    _stateMgr.SetState(State::eSCANNING_DATA_ACQUIRED);
+}
+
+void MainWindow::DrawStationTable() {
+  if (!_stations.empty()) {
+    // Флаги: границы, чередование цветов строк, возможность менять ширину
+    // колонок
+    static ImGuiTableFlags tableFlags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+        ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable;
+
+    // Запускаем таблицу
+    if (ImGui::BeginTable("GsmStationsTable", 7, tableFlags)) {
+      // Настройка заголовков
+      ImGui::TableSetupColumn("ARFCN");
+      ImGui::TableSetupColumn("Frequency");
+      ImGui::TableSetupColumn("CID");
+      ImGui::TableSetupColumn("LAC");
+      ImGui::TableSetupColumn("MCC");
+      ImGui::TableSetupColumn("MNC");
+      ImGui::TableSetupColumn("Pwr (dBm)");
+      ImGui::TableHeadersRow();
+
+      for (const auto &s : _stations) {
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("%d", s.arfcn);
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextUnformatted(s.freq.c_str());
+        ImGui::TableSetColumnIndex(2);
+        ImGui::Text("%d", s.cid);
+        ImGui::TableSetColumnIndex(3);
+        ImGui::Text("%d", s.lac);
+        ImGui::TableSetColumnIndex(4);
+        ImGui::TextUnformatted(s.mcc.c_str());
+        ImGui::TableSetColumnIndex(5);
+        ImGui::TextUnformatted(s.mnc.c_str());
+
+        // Цветовой индикатор для Power
+        ImGui::TableSetColumnIndex(6);
+        if (s.pwr > -75)
+          ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%d", s.pwr);
+        else
+          ImGui::Text("%d", s.pwr);
+      }
+      ImGui::EndTable();
+    }
+  }
 }

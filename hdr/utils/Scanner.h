@@ -4,7 +4,9 @@
 #include <mutex>
 #include <regex>
 #include <set>
+#include <signal.h>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include <reproc++/drain.hpp>
@@ -18,6 +20,12 @@ struct Station {
   std::string mcc;
   std::string mnc;
   int pwr;
+
+  bool isValid() {
+    if (cid == 0 || lac == 0 || mcc == "0" || mnc == "0" || mnc == "99")
+      return false;
+    return true;
+  }
 
   bool operator<(const Station &other) const { return arfcn < other.arfcn; }
 };
@@ -44,4 +52,6 @@ private:
   std::mutex _mtx;
   std::future<std::error_code> _drainTask;
   std::set<Station> _stations;
+
+  bool _running = false;
 };

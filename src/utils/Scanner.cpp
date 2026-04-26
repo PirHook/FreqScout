@@ -1,137 +1,118 @@
 #include "../../hdr/utils/Scanner.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <regex>
-#include <cstdlib>
 #include <signal.h>
 #include <unistd.h>
 
-// -------------------- DTOR --------------------
-
-Scanner::~Scanner() {
-    Stop();
-}
-
-// -------------------- START --------------------
+Scanner::~Scanner() { Stop(); }
 
 void Scanner::Start() {
-    if (_running)
+  if (_running)
     return;
 
-    std::cout << "START CALLED\n";
+  std::cout << "START CALLED\n";
 
-    _stopActs = {{reproc::stop::kill, reproc::milliseconds(100)}};
-    _options.stop = _stopActs;
+  _stopActs = {{reproc::stop::kill, reproc::milliseconds(100)}};
+  _options.stop = _stopActs;
 
-    std::vector<std::string> cmd = {
-        "python3", "-u",
-        "/usr/local/bin/grgsm_scanner",
-        "-b", "GSM900",
-        "-g", "40",
-        "-s", "2e6",
-        "--speed", "29",
-        "-v"
-    };
+  std::vector<std::string> cmd = {
+      "python3", "-u",     "/usr/local/bin/grgsm_scanner",
+      "-b",      "GSM900", "-g",
+      "40",      "-s",     "2e6",
+      "--speed", "29",     "-v"};
 
-    _ec = _process.start(cmd, _options);
+  _ec = _process.start(cmd, _options);
 
-    if (_ec) {
-        std::cout << "Start error: " << _ec.message() << "\n";
-        return;
-    }
+  if (_ec) {
+    std::cout << "Start error: " << _ec.message() << "\n";
+    return;
+  }
 
-    _running = true;
+  _running = true;
 
-            // 🔥 drain task оставляем как есть
-    _drainTask = std::async(std::launch::async, [this]() {
-        reproc::sink::thread_safe::string sink(_output, _mtx);
-        return reproc::drain(_process, sink, sink);
-    });
+  _drainTask = std::async(std::launch::async, [this]() {
+    reproc::sink::thread_safe::string sink(_output, _mtx);
+    return reproc::drain(_process, sink, sink);
+  });
 
-    std::cout << "SCANNER STARTED\n";
+  std::cout << "SCANNER STARTED\n";
 }
-
-// -------------------- STOP --------------------
 
 void Scanner::Stop() {
-    if (!_running)
+  if (!_running)
     return;
 
-    std::cout << "STOP CALLED\n";
+  std::cout << "STOP CALLED\n";
 
-    _running = false;
+  _running = false;
 
-            // 1. soft stop (не критично)
-    int status = 0;
-    std::tie(status, _ec) = _process.stop(_stopActs);
+  int status = 0;
+  std::tie(status, _ec) = _process.stop(_stopActs);
 
-    std::cout << "Soft stop status: " << status << "\n";
+  std::cout << "Soft stop status: " << status << "\n";
 
-            // 2. 🔥 HARD KILL (как ты хочешь — через system)
-    std::cout << "PKILL grgsm_scanner\n";
-    std::system("pkill -9 -f grgsm_scanner");
+  std::cout << "PKILL grgsm_scanner\n";
+  std::system("pkill -9 -f grgsm_scanner");
 
-    std::cout << "PKILL python3 fallback\n";
-    std::system("pkill -9 python3");
+  std::cout << "PKILL python3 fallback\n";
+  std::system("pkill -9 python3");
 
-            // 3. drain НЕ трогаем жестко, только даём ему умереть самому
-    if (_drainTask.valid()) {
-        _drainTask.wait_for(std::chrono::milliseconds(0));
+  if (_drainTask.valid()) {
+    _drainTask.wait_for(std::chrono::milliseconds(0));
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(_mtx);
+
+    if (!_output.empty()) {
+      ParseBuffer(_output);
+      _output.clear();
     }
+  }
 
-            // 4. забираем буфер (важно — НЕ блокируемся)
-    {
-        std::lock_guard<std::mutex> lock(_mtx);
+  _process = reproc::process{};
 
-        if (!_output.empty()) {
-            ParseBuffer(_output);
-            _output.clear();
-        }
-    }
+  _stations.clear();
 
-            // 5. reset состояния
-    _process = reproc::process{};
-
-    std::cout << "STOP COMPLETE\n";
+  std::cout << "STOP COMPLETE\n";
 }
-
-// -------------------- STATE --------------------
 
 bool Scanner::GetState() {
-    std::lock_guard<std::mutex> lock(_mtx);
-    return _running;
+  std::lock_guard<std::mutex> lock(_mtx);
+  return _running;
 }
-
-// -------------------- DATA --------------------
 
 std::vector<Station> Scanner::GetStations() {
-    std::lock_guard<std::mutex> lock(_mtx);
-    return {_stations.begin(), _stations.end()};
+  std::lock_guard<std::mutex> lock(_mtx);
+  if (!_output.empty()) {
+    ParseBuffer(_output);
+  }
+  return {_stations.begin(), _stations.end()};
 }
 
-// -------------------- PARSER --------------------
-
 void Scanner::ParseBuffer(const std::string &buffer) {
-    if (buffer.empty())
+  if (buffer.empty())
     return;
 
-    static std::regex stationRegex(
-        R"(ARFCN:\s*(\d+),\s*Freq:\s*([\d\.]+)M,\s*CID:\s*(\d+),\s*LAC:\s*(\d+),\s*MCC:\s*(\d+),\s*MNC:\s*(\d+),\s*Pwr:\s*(-?\d+))");
+  static std::regex stationRegex(
+      R"(ARFCN:\s*(\d+),\s*Freq:\s*([\d\.]+)M,\s*CID:\s*(\d+),\s*LAC:\s*(\d+),\s*MCC:\s*(\d+),\s*MNC:\s*(\d+),\s*Pwr:\s*(-?\d+))");
 
-    auto begin = std::sregex_iterator(buffer.begin(), buffer.end(), stationRegex);
-    auto end = std::sregex_iterator();
+  auto begin = std::sregex_iterator(buffer.begin(), buffer.end(), stationRegex);
+  auto end = std::sregex_iterator();
 
-    for (auto i = begin; i != end; ++i) {
-        Station s;
+  for (auto i = begin; i != end; ++i) {
+    Station s;
 
-        s.arfcn = std::stoi((*i)[1]);
-        s.freq  = (*i)[2].str() + " MHz";
-        s.cid   = std::stoi((*i)[3]);
-        s.lac   = std::stoi((*i)[4]);
-        s.mcc   = (*i)[5];
-        s.mnc   = (*i)[6];
-        s.pwr   = std::stoi((*i)[7]);
+    s.arfcn = std::stoi((*i)[1]);
+    s.freq = (*i)[2].str() + " MHz";
+    s.cid = std::stoi((*i)[3]);
+    s.lac = std::stoi((*i)[4]);
+    s.mcc = (*i)[5];
+    s.mnc = (*i)[6];
+    s.pwr = std::stoi((*i)[7]);
 
-        _stations.insert(s);
-    }
+    _stations.insert(s);
+  }
 }

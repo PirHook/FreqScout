@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -7,62 +8,53 @@
 #include <set>
 #include <string>
 #include <vector>
-#include <atomic>
 
 #include <reproc++/drain.hpp>
 #include <reproc++/reproc.hpp>
 
 struct Station {
-    int arfcn;
-    std::string freq;
-    int cid;
-    int lac;
-    std::string mcc;
-    std::string mnc;
-    int pwr;
+  int arfcn;
+  std::string freq;
+  int cid;
+  int lac;
+  std::string mcc;
+  std::string mnc;
+  int pwr;
 
-    bool isValid() const {
-        if (cid == 0 || lac == 0 || mcc == "0" || mnc == "0" || mnc == "99")
+  bool isValid() const {
+    if (cid == 0 || lac == 0 || mcc == "0" || mnc == "0" || mnc == "99")
       return false;
     return true;
-    }
+  }
 
-    bool operator<(const Station &other) const {
-        return arfcn < other.arfcn;
-    }
+  bool operator<(const Station &other) const { return arfcn < other.arfcn; }
 };
 
 class Scanner {
 public:
-    Scanner() = default;
-    ~Scanner();
+  Scanner() = default;
+  ~Scanner();
 
-    void Start();
-    void Stop();
+  void Start();
+  void Stop();
 
-    std::vector<Station> GetStations();
-    bool GetState();
-
-private:
-    void ParseBuffer(const std::string &buffer);
+  std::vector<Station> GetStations();
+  bool GetState();
 
 private:
-    // ---- reproc ----
-    reproc::process _process;
-    reproc::options _options;
-    reproc::stop_actions _stopActs;
-    std::error_code _ec;
+  void ParseBuffer(const std::string &buffer);
 
-            // ---- async drain ----
-    std::future<std::error_code> _drainTask;
+private:
+  reproc::process _process;
+  reproc::options _options;
+  reproc::stop_actions _stopActs;
+  std::error_code _ec;
 
-            // ---- data ----
-    std::string _output;
-    std::set<Station> _stations;
+  std::future<std::error_code> _drainTask;
 
-            // ---- sync ----
-    std::mutex _mtx;
+  std::string _output;
+  std::set<Station> _stations;
 
-            // ---- state ----
-    std::atomic<bool> _running{false};
+  std::mutex _mtx;
+  std::atomic<bool> _running{false};
 };

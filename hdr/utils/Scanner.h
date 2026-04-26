@@ -1,12 +1,12 @@
 #pragma once
+
+#include <atomic>
 #include <future>
 #include <iostream>
 #include <mutex>
 #include <regex>
 #include <set>
-#include <signal.h>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include <reproc++/drain.hpp>
@@ -21,7 +21,7 @@ struct Station {
   std::string mnc;
   int pwr;
 
-  bool isValid() {
+  bool isValid() const {
     if (cid == 0 || lac == 0 || mcc == "0" || mnc == "0" || mnc == "99")
       return false;
     return true;
@@ -32,27 +32,29 @@ struct Station {
 
 class Scanner {
 public:
-  Scanner() {}
+  Scanner() = default;
   ~Scanner();
 
   void Start();
   void Stop();
+
   std::vector<Station> GetStations();
   bool GetState();
 
 private:
-  int fail(std::error_code ec);
   void ParseBuffer(const std::string &buffer);
 
 private:
   reproc::process _process;
-  reproc::stop_actions _stopActs;
   reproc::options _options;
+  reproc::stop_actions _stopActs;
   std::error_code _ec;
-  std::string _output;
-  std::mutex _mtx;
+
   std::future<std::error_code> _drainTask;
+
+  std::string _output;
   std::set<Station> _stations;
 
-  bool _running = false;
+  std::mutex _mtx;
+  std::atomic<bool> _running{false};
 };

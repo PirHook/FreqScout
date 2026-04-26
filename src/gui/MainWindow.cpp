@@ -1,5 +1,5 @@
 #include "../../hdr/gui/MainWindow.h"
-
+// add appContext class
 MainWindow::MainWindow()
     : _running(true), _lastTick(SDL_GetTicks()), _fps(0), _fpsTimer(0.0f),
       _fpsFrames(0), _scanTimer(0.0f) {
@@ -92,13 +92,9 @@ void MainWindow::Run() {
       DrawStationTable();
       break;
 
-    case State::eSCAN_DONE_DATA_ACQUIRED:
+    case State::eSCAN_DONE:
       BuildRestartFrame();
       DrawStationTable();
-      break;
-
-    case State::eSCAN_DONE_NO_DATA:
-      BuildRestartFrame();
       break;
 
     default:
@@ -109,21 +105,23 @@ void MainWindow::Run() {
 
     DrawNextFrame();
 
-    SDL_Delay(8); // минимальный yield CPU
+    SDL_Delay(8);
   }
 }
 
-void MainWindow::Update(float dt) {
+void MainWindow::Update(float dt) { // move to state machine
   switch (_stateMgr.GetState()) {
 
-  case State::eSCAN_STARTED:
+  case State::eSCAN_STARTED: {
     if (!_gsmScanner.GetState()) {
       _gsmScanner.Start();
+      _stations.clear();
     }
     _stateMgr.SetState(State::eSCANNING);
     break;
+  }
 
-  case State::eSCANNING:
+  case State::eSCANNING: {
     _scanTimer += dt;
 
     if (_scanTimer >= 0.1f) { // 10 Hz
@@ -135,8 +133,9 @@ void MainWindow::Update(float dt) {
       _stateMgr.SetState(State::eSCANNING_DATA_ACQUIRED);
     }
     break;
+  }
 
-  case State::eSCANNING_DATA_ACQUIRED:
+  case State::eSCANNING_DATA_ACQUIRED: {
     _scanTimer += dt;
 
     if (_scanTimer >= 0.1f) {
@@ -144,18 +143,16 @@ void MainWindow::Update(float dt) {
       _scanTimer = 0.0f;
     }
     break;
+  }
 
-  case State::eSCAN_STOPPED:
-    if (_stations.empty()) {
-      _stateMgr.SetState(State::eSCAN_DONE_NO_DATA);
-    } else {
-      _stateMgr.SetState(State::eSCAN_DONE_DATA_ACQUIRED);
-    }
+  case State::eSCAN_DONE: {
     _gsmScanner.Stop();
     break;
+  }
 
-  default:
+  default: {
     break;
+  }
   }
 }
 
@@ -181,7 +178,7 @@ void MainWindow::BuildRestartFrame() {
 
 void MainWindow::BuildScanFrame() {
   if (ImGui::Button("Stop Scan", ImVec2(120, 40))) {
-    _stateMgr.SetState(State::eSCAN_STOPPED);
+    _stateMgr.SetState(State::eSCAN_DONE);
     return;
   }
 
@@ -192,7 +189,7 @@ void MainWindow::BuildScanFrame() {
   }
 }
 
-void MainWindow::DrawStationTable() {
+void MainWindow::DrawStationTable() { // do clickable table records
   if (_stations.empty())
     return;
 

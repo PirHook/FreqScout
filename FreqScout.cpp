@@ -1,7 +1,3 @@
-#include <iostream>
-#include <string>
-#include <vector>
-
 #include "hdr/gui/MainWindow.h"
 
 int main() {

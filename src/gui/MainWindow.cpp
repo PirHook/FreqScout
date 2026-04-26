@@ -1,5 +1,6 @@
 #include "../../hdr/gui/MainWindow.h"
-// add appContext class
+#include <rtl-sdr.h>
+
 MainWindow::MainWindow() : _running(true), _lastTick(SDL_GetTicks()) {
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -134,9 +135,11 @@ void MainWindow::BuildScanFrame() {
   }
 }
 
-void MainWindow::BuildAnalyzingFrame() { ImGui::Text("SPECTRUM COMIG SOON\n"); }
+void MainWindow::BuildAnalyzingFrame() {
+  ImGui::Text("SPECTRUM COMIG SOON: %d\n", rtlsdr_get_device_count());
+}
 
-void MainWindow::DrawStationTable() { // do clickable table records
+void MainWindow::DrawStationTable() {
   if (_context._stations.empty())
     return;
 

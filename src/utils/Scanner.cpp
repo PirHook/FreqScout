@@ -96,6 +96,11 @@ std::vector<Station> Scanner::GetStations() {
   return {_stations.begin(), _stations.end()};
 }
 
+bool Scanner::GetState() {
+  std::lock_guard<std::mutex> lock(_mtx);
+  return _running;
+}
+
 int Scanner::fail(std::error_code ec) {
   std::cerr << ec.message();
   return ec.value();

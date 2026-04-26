@@ -38,6 +38,7 @@ public:
   void Start();
   void Stop();
   std::vector<Station> GetStations();
+  bool GetState();
 
 private:
   int fail(std::error_code ec);

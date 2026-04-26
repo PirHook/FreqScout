@@ -32,6 +32,8 @@ public:
   void Run();
 
 private:
+  void Update(float dt);
+
   void DrawNextFrame();
   void BuildMainThemeFrame();
   void BuildRestartFrame();
@@ -42,7 +44,11 @@ private:
 private:
   const int16_t _winWidth = 800;
   const int16_t _winHeight = 480;
-  uint16_t _frameCounter;
+  double _lastTick;
+  int _fps;
+  double _fpsTimer;
+  int _fpsFrames;
+  double _scanTimer;
   bool _running;
   bool _isScanning;
   ImGuiWindowFlags _winFlags;

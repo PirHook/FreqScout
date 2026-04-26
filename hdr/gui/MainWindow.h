@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "../utils/Scanner.h"
+#include "../utils/AppContext.h"
 #include "../utils/StateManager.h"
 
 struct WindowDeleter {
@@ -38,6 +38,7 @@ private:
   void BuildMainThemeFrame();
   void BuildRestartFrame();
   void BuildScanFrame();
+  void BuildAnalyzingFrame();
 
   void DrawStationTable();
 
@@ -45,10 +46,6 @@ private:
   const int16_t _winWidth = 800;
   const int16_t _winHeight = 480;
   double _lastTick;
-  int _fps;
-  double _fpsTimer;
-  int _fpsFrames;
-  double _scanTimer;
   bool _running;
   bool _isScanning;
   ImGuiWindowFlags _winFlags;
@@ -57,6 +54,6 @@ private:
   std::unique_ptr<SDL_Renderer, RendererDeleter> _renderer;
   std::vector<Station> _stations;
 
-  Scanner _gsmScanner;
   StateManager _stateMgr;
+  AppContext _context;
 };

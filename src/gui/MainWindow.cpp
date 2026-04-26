@@ -1,8 +1,6 @@
 #include "../../hdr/gui/MainWindow.h"
 // add appContext class
-MainWindow::MainWindow()
-    : _running(true), _lastTick(SDL_GetTicks()), _fps(0), _fpsTimer(0.0f),
-      _fpsFrames(0), _scanTimer(0.0f) {
+MainWindow::MainWindow() : _running(true), _lastTick(SDL_GetTicks()) {
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     std::cerr << "SDL init error\n";
@@ -52,18 +50,8 @@ void MainWindow::Run() {
     float dt = (now - _lastTick) / 1000.0f;
     _lastTick = now;
 
-    // -------- FPS --------
-    _fpsTimer += dt;
-    _fpsFrames++;
-
-    if (_fpsTimer >= 1.0f) {
-      _fps = _fpsFrames;
-      _fpsFrames = 0;
-      _fpsTimer = 0.0f;
-    }
-
     // -------- Logic --------
-    Update(dt);
+    _stateMgr.Update(dt, _context);
 
     // -------- ImGui frame --------
     ImGui_ImplSDLRenderer2_NewFrame();
@@ -76,7 +64,7 @@ void MainWindow::Run() {
     ImGui::Begin("Control Panel", nullptr, _winFlags);
 
     ImGui::Text("FreqScout. GSM Signal Analyze utility");
-    ImGui::Text("FPS: %d", _fps);
+    ImGui::Text("FPS: %d", _stateMgr.GetFps());
 
     switch (_stateMgr.GetState()) {
     case State::eMAIN_THEME:
@@ -97,6 +85,10 @@ void MainWindow::Run() {
       DrawStationTable();
       break;
 
+    case State::eANALYZING:
+      BuildAnalyzingFrame();
+      break;
+
     default:
       break;
     }
@@ -106,53 +98,6 @@ void MainWindow::Run() {
     DrawNextFrame();
 
     SDL_Delay(8);
-  }
-}
-
-void MainWindow::Update(float dt) { // move to state machine
-  switch (_stateMgr.GetState()) {
-
-  case State::eSCAN_STARTED: {
-    if (!_gsmScanner.GetState()) {
-      _gsmScanner.Start();
-      _stations.clear();
-    }
-    _stateMgr.SetState(State::eSCANNING);
-    break;
-  }
-
-  case State::eSCANNING: {
-    _scanTimer += dt;
-
-    if (_scanTimer >= 0.1f) { // 10 Hz
-      _stations = _gsmScanner.GetStations();
-      _scanTimer = 0.0f;
-    }
-
-    if (!_stations.empty()) {
-      _stateMgr.SetState(State::eSCANNING_DATA_ACQUIRED);
-    }
-    break;
-  }
-
-  case State::eSCANNING_DATA_ACQUIRED: {
-    _scanTimer += dt;
-
-    if (_scanTimer >= 0.1f) {
-      _stations = _gsmScanner.GetStations();
-      _scanTimer = 0.0f;
-    }
-    break;
-  }
-
-  case State::eSCAN_DONE: {
-    _gsmScanner.Stop();
-    break;
-  }
-
-  default: {
-    break;
-  }
   }
 }
 
@@ -184,21 +129,24 @@ void MainWindow::BuildScanFrame() {
 
   ImGui::Separator();
 
-  if (_stations.empty()) {
+  if (_context._stations.empty()) {
     ImGui::TextColored(ImVec4(1, 1, 0, 1), "Searching for GSM towers...");
   }
 }
 
+void MainWindow::BuildAnalyzingFrame() { ImGui::Text("SPECTRUM COMIG SOON\n"); }
+
 void MainWindow::DrawStationTable() { // do clickable table records
-  if (_stations.empty())
+  if (_context._stations.empty())
     return;
 
   static ImGuiTableFlags tableFlags =
       ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
       ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable;
 
-  if (ImGui::BeginTable("GsmStationsTable", 7, tableFlags)) {
+  if (ImGui::BeginTable("GsmStationsTable", 8, tableFlags)) {
 
+    ImGui::TableSetupColumn("");
     ImGui::TableSetupColumn("ARFCN");
     ImGui::TableSetupColumn("Frequency");
     ImGui::TableSetupColumn("CID");
@@ -208,28 +156,35 @@ void MainWindow::DrawStationTable() { // do clickable table records
     ImGui::TableSetupColumn("Pwr (dBm)");
     ImGui::TableHeadersRow();
 
-    for (const auto &s : _stations) {
+    for (const auto &s : _context._stations) {
       ImGui::TableNextRow();
 
       ImGui::TableSetColumnIndex(0);
-      ImGui::Text("%d", s.arfcn);
+      std::string btnId = "Analyze##" + std::to_string(s.arfcn);
+      if (ImGui::Button(btnId.c_str())) {
+        _context._selectedStation = s;
+        _stateMgr.SetState(State::eANALYZING);
+      }
 
       ImGui::TableSetColumnIndex(1);
-      ImGui::TextUnformatted(s.freq.c_str());
+      ImGui::Text("%d", s.arfcn);
 
       ImGui::TableSetColumnIndex(2);
-      ImGui::Text("%d", s.cid);
+      ImGui::TextUnformatted(s.freq.c_str());
 
       ImGui::TableSetColumnIndex(3);
-      ImGui::Text("%d", s.lac);
+      ImGui::Text("%d", s.cid);
 
       ImGui::TableSetColumnIndex(4);
-      ImGui::TextUnformatted(s.mcc.c_str());
+      ImGui::Text("%d", s.lac);
 
       ImGui::TableSetColumnIndex(5);
-      ImGui::TextUnformatted(s.mnc.c_str());
+      ImGui::TextUnformatted(s.mcc.c_str());
 
       ImGui::TableSetColumnIndex(6);
+      ImGui::TextUnformatted(s.mnc.c_str());
+
+      ImGui::TableSetColumnIndex(7);
       if (s.pwr > -75)
         ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%d", s.pwr);
       else

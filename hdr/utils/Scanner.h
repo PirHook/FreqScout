@@ -12,23 +12,7 @@
 #include <reproc++/drain.hpp>
 #include <reproc++/reproc.hpp>
 
-struct Station {
-  int arfcn;
-  std::string freq;
-  int cid;
-  int lac;
-  std::string mcc;
-  std::string mnc;
-  int pwr;
-
-  bool isValid() const {
-    if (cid == 0 || lac == 0 || mcc == "0" || mnc == "0" || mnc == "99")
-      return false;
-    return true;
-  }
-
-  bool operator<(const Station &other) const { return arfcn < other.arfcn; }
-};
+#include "CommonStructs.h"
 
 class Scanner {
 public:

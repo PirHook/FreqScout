@@ -1,134 +1,137 @@
 #include "../../hdr/utils/Scanner.h"
 
+#include <iostream>
+#include <regex>
+#include <cstdlib>
+#include <signal.h>
+#include <unistd.h>
+
+// -------------------- DTOR --------------------
+
 Scanner::~Scanner() {
-  Stop(); // ок, но теперь Stop безопасный
+    Stop();
 }
+
+// -------------------- START --------------------
 
 void Scanner::Start() {
-  std::cout << "START CALLED\n";
-
-  // FIX: убрали terminate, только жесткий kill
-  _stopActs = {{reproc::stop::kill, reproc::milliseconds(100)}};
-
-  // FIX: не полагаемся на _options.stop
-  _options.stop = _stopActs;
-
-  // FIX: убрали stdbuf — он ломает kill
-  std::vector<std::string> cmd = {
-      "python3", "-u",     "/usr/local/bin/grgsm_scanner",
-      "-b",      "GSM900", "-g",
-      "40",      "-s",     "2e6",
-      "--speed", "29",     "-v"};
-
-  _ec = _process.start(cmd, _options);
-
-  if (_ec == std::errc::no_such_file_or_directory) {
-    std::cout << "Program not found. PATH issue. Code: " << _ec.value()
-              << std::endl;
+    if (_running)
     return;
-  } else if (_ec) {
-    std::cout << "Start error: " << fail(_ec) << std::endl;
-    return;
-  }
 
-  _running = true;
+    std::cout << "START CALLED\n";
 
-  // FIX: async оставили, но он теперь НЕ блокирует Stop
-  _drainTask = std::async(std::launch::async, [this]() {
-    reproc::sink::thread_safe::string sink(_output, _mtx);
-    return reproc::drain(_process, sink, sink);
-  });
+    _stopActs = {{reproc::stop::kill, reproc::milliseconds(100)}};
+    _options.stop = _stopActs;
+
+    std::vector<std::string> cmd = {
+        "python3", "-u",
+        "/usr/local/bin/grgsm_scanner",
+        "-b", "GSM900",
+        "-g", "40",
+        "-s", "2e6",
+        "--speed", "29",
+        "-v"
+    };
+
+    _ec = _process.start(cmd, _options);
+
+    if (_ec) {
+        std::cout << "Start error: " << _ec.message() << "\n";
+        return;
+    }
+
+    _running = true;
+
+            // 🔥 drain task оставляем как есть
+    _drainTask = std::async(std::launch::async, [this]() {
+        reproc::sink::thread_safe::string sink(_output, _mtx);
+        return reproc::drain(_process, sink, sink);
+    });
+
+    std::cout << "SCANNER STARTED\n";
 }
+
+// -------------------- STOP --------------------
 
 void Scanner::Stop() {
-  if (!_running)
+    if (!_running)
     return;
 
-  std::cout << "STOP CALLED\n";
+    std::cout << "STOP CALLED\n";
 
-  int status = 0;
-  std::tie(status, _ec) = _process.stop(_stopActs);
+    _running = false;
 
-  std::cout << "Force killing process group\n";
-  kill(-_process.pid().first, SIGKILL);
+            // 1. soft stop (не критично)
+    int status = 0;
+    std::tie(status, _ec) = _process.stop(_stopActs);
 
-  if (_drainTask.valid()) {
-    if (_drainTask.wait_for(std::chrono::milliseconds(200)) ==
-        std::future_status::ready) {
-      _ec = _drainTask.get();
-    } else {
-      std::cout << "Drain still running, skipping wait\n";
+    std::cout << "Soft stop status: " << status << "\n";
+
+            // 2. 🔥 HARD KILL (как ты хочешь — через system)
+    std::cout << "PKILL grgsm_scanner\n";
+    std::system("pkill -9 -f grgsm_scanner");
+
+    std::cout << "PKILL python3 fallback\n";
+    std::system("pkill -9 python3");
+
+            // 3. drain НЕ трогаем жестко, только даём ему умереть самому
+    if (_drainTask.valid()) {
+        _drainTask.wait_for(std::chrono::milliseconds(0));
     }
-  }
 
-  if (_ec) {
-    std::cout << "Stop error: " << fail(_ec) << std::endl;
-  }
+            // 4. забираем буфер (важно — НЕ блокируемся)
+    {
+        std::lock_guard<std::mutex> lock(_mtx);
 
-  std::cout << "Exit status: " << status << std::endl;
+        if (!_output.empty()) {
+            ParseBuffer(_output);
+            _output.clear();
+        }
+    }
 
-  // FIX: обязательно сброс процесса
-  _process = reproc::process{};
-  _running = false;
+            // 5. reset состояния
+    _process = reproc::process{};
+
+    std::cout << "STOP COMPLETE\n";
 }
 
-std::vector<Station> Scanner::GetStations() {
-  // FIX: не блокируемся надолго
-  if (_drainTask.valid() && _drainTask.wait_for(std::chrono::milliseconds(
-                                100)) != std::future_status::ready) {
-
-    std::lock_guard<std::mutex> lock(_mtx);
-    ParseBuffer(_output);
-    return {_stations.begin(), _stations.end()};
-  }
-
-  // FIX: аккуратно забираем результат один раз
-  if (_drainTask.valid()) {
-    _ec = _drainTask.get();
-  }
-
-  std::lock_guard<std::mutex> lock(_mtx);
-
-  if (_output.empty() && _ec) {
-    std::cout << "Drain error: " << _ec.message() << "\n";
-  }
-
-  return {_stations.begin(), _stations.end()};
-}
+// -------------------- STATE --------------------
 
 bool Scanner::GetState() {
-  std::lock_guard<std::mutex> lock(_mtx);
-  return _running;
+    std::lock_guard<std::mutex> lock(_mtx);
+    return _running;
 }
 
-int Scanner::fail(std::error_code ec) {
-  std::cerr << ec.message();
-  return ec.value();
+// -------------------- DATA --------------------
+
+std::vector<Station> Scanner::GetStations() {
+    std::lock_guard<std::mutex> lock(_mtx);
+    return {_stations.begin(), _stations.end()};
 }
+
+// -------------------- PARSER --------------------
 
 void Scanner::ParseBuffer(const std::string &buffer) {
-  // FIX: используй buffer, а не _output напрямую
-  if (buffer.empty())
+    if (buffer.empty())
     return;
 
-  static std::regex stationRegex(
-      R"(ARFCN:\s*(\d+),\s*Freq:\s*([\d\.]+)M,\s*CID:\s*(\d+),\s*LAC:\s*(\d+),\s*MCC:\s*(\d+),\s*MNC:\s*(\d+),\s*Pwr:\s*(-?\d+))");
+    static std::regex stationRegex(
+        R"(ARFCN:\s*(\d+),\s*Freq:\s*([\d\.]+)M,\s*CID:\s*(\d+),\s*LAC:\s*(\d+),\s*MCC:\s*(\d+),\s*MNC:\s*(\d+),\s*Pwr:\s*(-?\d+))");
 
-  auto begin = std::sregex_iterator(buffer.begin(), buffer.end(), stationRegex);
-  auto end = std::sregex_iterator();
+    auto begin = std::sregex_iterator(buffer.begin(), buffer.end(), stationRegex);
+    auto end = std::sregex_iterator();
 
-  for (auto i = begin; i != end; ++i) {
-    const std::smatch &match = *i;
+    for (auto i = begin; i != end; ++i) {
+        Station s;
 
-    Station s;
-    s.arfcn = std::stoi(match[1].str());
-    s.freq = match[2].str() + " MHz";
-    s.cid = std::stoi(match[3].str());
-    s.lac = std::stoi(match[4].str());
-    s.mcc = match[5].str();
-    s.mnc = match[6].str();
-    s.pwr = std::stoi(match[7].str());
+        s.arfcn = std::stoi((*i)[1]);
+        s.freq  = (*i)[2].str() + " MHz";
+        s.cid   = std::stoi((*i)[3]);
+        s.lac   = std::stoi((*i)[4]);
+        s.mcc   = (*i)[5];
+        s.mnc   = (*i)[6];
+        s.pwr   = std::stoi((*i)[7]);
 
-    _stations.insert(s);
-  }
+        _stations.insert(s);
+    }
 }

@@ -19,8 +19,8 @@ public:
   int DevCount();
   int Open(int index);
   int Close();
-  int Init(const uint32_t &freq, const uint32_t sampRate, const int &ppm,
-           const int &gain);
+  int Init(const uint32_t freq, const uint32_t sampRate, const int ppm,
+           const int gain);
   int Start(DataHandler handler);
   int Stop();
 

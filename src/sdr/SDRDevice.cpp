@@ -5,13 +5,13 @@ int SDRDevice::DevCount() { return rtlsdr_get_device_count(); }
 int SDRDevice::Open(int index) {
   if (!_rtl)
     return rtlsdr_open(&_rtl, index);
-  return ErrCodes::DEV_ALREADY_OPENED;
+  return static_cast<int>(ErrCodes::DEV_ALREADY_OPENED);
 }
 
 int SDRDevice::Close() {
   if (_rtl)
     return rtlsdr_close(_rtl);
-  return ErrCodes::DEV_ALREADY_CLOSED;
+  return static_cast<int>(ErrCodes::DEV_ALREADY_CLOSED);
 }
 
 int SDRDevice::Init(const uint32_t freq, const uint32_t sampRate, const int ppm,
@@ -44,7 +44,7 @@ int SDRDevice::Init(const uint32_t freq, const uint32_t sampRate, const int ppm,
 
 int SDRDevice::Start(DataHandler handler) {
   if (!_rtl)
-    return ErrCodes::DEV_ALREADY_CLOSED;
+    return static_cast<int>(ErrCodes::DEV_ALREADY_CLOSED);
   _dataHandler = handler;
 
   _workerThread = std::thread(
@@ -54,7 +54,7 @@ int SDRDevice::Start(DataHandler handler) {
 
 int SDRDevice::Stop() {
   if (!_rtl)
-    return ErrCodes::DEV_ALREADY_CLOSED;
+    return static_cast<int>(ErrCodes::DEV_ALREADY_CLOSED);
   int res = rtlsdr_cancel_async(_rtl);
 
   if (_workerThread.joinable()) {
@@ -62,4 +62,12 @@ int SDRDevice::Stop() {
   }
 
   return res;
+}
+
+void SDRDevice::rtlsdrCallback(uint8_t *buf, uint32_t len, void *ctx) {
+  auto *self = static_cast<SDRDevice *>(ctx);
+  if (self && self->_dataHandler) {
+    std::vector<uint8_t> data(buf, buf + len);
+    self->_dataHandler(data);
+  }
 }

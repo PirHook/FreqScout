@@ -19,8 +19,6 @@ struct RendererDeleter {
 };
 
 class MainWindow {
-  MainWindow(const MainWindow &) = delete;
-  MainWindow &operator=(const MainWindow &) = delete;
 
 public:
   MainWindow();

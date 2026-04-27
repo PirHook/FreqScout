@@ -1,5 +1,4 @@
 #include "../../hdr/gui/MainWindow.h"
-#include <rtl-sdr.h>
 
 MainWindow::MainWindow() : _running(true), _lastTick(SDL_GetTicks()) {
 
@@ -135,9 +134,7 @@ void MainWindow::BuildScanFrame() {
   }
 }
 
-void MainWindow::BuildAnalyzingFrame() {
-  ImGui::Text("SPECTRUM COMIG SOON: %d\n", rtlsdr_get_device_count());
-}
+void MainWindow::BuildAnalyzingFrame() { ImGui::Text("SPECTRUM COMIG SOON\n"); }
 
 void MainWindow::DrawStationTable() {
   if (_context._stations.empty())

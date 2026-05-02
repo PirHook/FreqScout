@@ -85,8 +85,11 @@ void MainWindow::Run() {
       DrawStationTable();
       break;
 
-    case State::eANALYZING:
+    case State::eSTART_SPECTRUM:
       BuildAnalyzingFrame();
+      break;
+    case State::eSPECTRUM_RUNNING:
+      BuildSpectrumFrame();
       break;
 
     default:
@@ -136,6 +139,24 @@ void MainWindow::BuildScanFrame() {
 
 void MainWindow::BuildAnalyzingFrame() { ImGui::Text("SPECTRUM COMIG SOON\n"); }
 
+void MainWindow::BuildSpectrumFrame() {
+  if (ImGui::Button("<- Back to Stations", ImVec2(160, 30))) {
+    _stateMgr.SetState(State::eSPECTRUM_STOP);
+    return;
+  }
+
+  if (!_context._currentSpectrumData.empty()) {
+    ImGui::Text("Frequency: %s",
+                _context._selectedStation.value().freq.c_str());
+    ImGui::PlotLines("##Spectrum", _context._currentSpectrumData.data(),
+                     _context._currentSpectrumData.size(), 0, nullptr, 0.0f,
+                     1.0f, ImVec2(-1, 300));
+    ImGui::TextColored(ImVec4(0, 1, 0, 1), "Live Iq Steam Active");
+  } else {
+    ImGui::Text("Waiting for SDR data...");
+  }
+}
+
 void MainWindow::DrawStationTable() {
   if (_context._stations.empty())
     return;
@@ -163,7 +184,7 @@ void MainWindow::DrawStationTable() {
       std::string btnId = "Analyze##" + std::to_string(s.arfcn);
       if (ImGui::Button(btnId.c_str())) {
         _context._selectedStation = s;
-        _stateMgr.SetState(State::eANALYZING);
+        _stateMgr.SetState(State::eSTART_SPECTRUM);
       }
 
       ImGui::TableSetColumnIndex(1);

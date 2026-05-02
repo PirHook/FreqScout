@@ -61,10 +61,29 @@ void StateManager::Update(double dt, AppContext &ctx) {
     break;
   }
 
-  case State::eANALYZING: {
-    if (_gsmScanner.GetState())
+  case State::eSTART_SPECTRUM: {
+    if (_gsmScanner.GetState()) {
       _gsmScanner.Stop();
+      std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    }
+    std::string freqStr = ctx._selectedStation.value().freq;
+    size_t pos = freqStr.find(" ");
+    if (pos != std::string::npos)
+      freqStr = freqStr.substr(0, pos);
+    uint32_t freqHz = static_cast<uint32_t>(std::stod(freqStr) * 1e6);
+    _spectrum.Start(freqHz, 2048000);
+
+    _currentState = State::eSPECTRUM_RUNNING;
     break;
+  }
+  case State::eSPECTRUM_RUNNING: {
+    ctx._currentSpectrumData = _spectrum.GetCurrentData();
+    break;
+  }
+  case State::eSPECTRUM_STOP: {
+    if (_spectrum.isRunning())
+      _spectrum.Stop();
+    _currentState = State::eSCAN_DONE;
   }
 
   default: {

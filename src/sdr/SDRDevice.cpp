@@ -1,16 +1,25 @@
 #include "../../hdr/sdr/SDRDevice.h"
+#include <stdio.h>
 
 int SDRDevice::DevCount() { return rtlsdr_get_device_count(); }
 
 int SDRDevice::Open(int index) {
-  if (!_rtl)
-    return rtlsdr_open(&_rtl, index);
+  if (!_rtl) {
+    int res = rtlsdr_open(&_rtl, index);
+    if (res == 0) {
+      rtlsdr_reset_buffer(_rtl);
+    }
+    return res;
+  }
   return static_cast<int>(ErrCodes::DEV_ALREADY_OPENED);
 }
 
 int SDRDevice::Close() {
-  if (_rtl)
-    return rtlsdr_close(_rtl);
+  if (_rtl) {
+    int res = rtlsdr_close(_rtl);
+    _rtl = nullptr;
+    return res;
+  }
   return static_cast<int>(ErrCodes::DEV_ALREADY_CLOSED);
 }
 
@@ -60,6 +69,8 @@ int SDRDevice::Stop() {
   if (_workerThread.joinable()) {
     _workerThread.join();
   }
+
+  rtlsdr_reset_buffer(_rtl);
 
   return res;
 }

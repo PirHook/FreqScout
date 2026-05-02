@@ -1,4 +1,5 @@
 #pragma once
+#include "../sdr/Spectrum.h"
 #include "../utils/Scanner.h"
 #include "AppContext.h"
 #include "CommonStructs.h"
@@ -23,4 +24,5 @@ private:
 
   State _currentState;
   Scanner _gsmScanner;
+  Spectrum _spectrum;
 };

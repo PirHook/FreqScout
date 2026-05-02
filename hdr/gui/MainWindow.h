@@ -34,6 +34,7 @@ private:
   void BuildRestartFrame();
   void BuildScanFrame();
   void BuildAnalyzingFrame();
+  void BuildSpectrumFrame();
 
   void DrawStationTable();
 

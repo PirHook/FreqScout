@@ -112,7 +112,7 @@ void Scanner::ParseBuffer(const std::string &buffer) {
     s.mcc = (*i)[5];
     s.mnc = (*i)[6];
     s.pwr = std::stoi((*i)[7]);
-
-    _stations.insert(s);
+    if (s.isValid())
+      _stations.insert(s);
   }
 }

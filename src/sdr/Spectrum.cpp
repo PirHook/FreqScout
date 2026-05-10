@@ -41,6 +41,16 @@ void Spectrum::Stop() {
 }
 
 void Spectrum::ProcessingLoop() {
+  int nfft = 1024;
+  fftwf_complex *in =
+      (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * nfft);
+  fftwf_complex *out =
+      (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * nfft);
+  fftwf_plan plan =
+      fftwf_plan_dft_1d(nfft, in, out, FFTW_FORWARD, FFTW_MEASURE);
+
+  GenerateHannWindow(nfft);
+
   while (_running) {
     std::vector<uint8_t> workData;
 
@@ -55,21 +65,69 @@ void Spectrum::ProcessingLoop() {
       _rawQueue.pop();
     }
 
-    std::vector<float> magnitudes;
-    for (size_t i = 0; i < workData.size(); i += 2) {
-      float i_f = (workData[i] - 127.5f) / 127.5f;
-      float q_f = (workData[i + 1] - 127.5f) / 127.5f;
-      magnitudes.push_back(std::sqrt(i_f * i_f + q_f * q_f));
+    for (int i = 0; i < nfft; i++) {
+      float i_raw = (workData[2 * i] - 127.5f) / 127.5f;
+      float q_raw = (workData[2 * i + 1] - 127.5f) / 127.5f;
+
+      in[i][0] = i_raw * _window[i];
+      in[i][1] = q_raw * _window[i];
+    }
+
+    fftwf_execute(plan);
+
+    std::vector<float> magnitudes(nfft);
+    for (int i = 0; i < nfft; i++) {
+      int targetIdx = (i < nfft / 2) ? (i + nfft / 2) : (i - nfft / 2);
+
+      float re = out[i][0];
+      float im = out[i][1];
+      float mag = sqrtf(re * re + im * im) / nfft;
+
+      magnitudes[targetIdx] = 20.0f * log10f(mag + 1e-6f);
+    }
+
+    {
+      float centerGain = 20.0f;
+      int centerBin = nfft / 2;
+      int spread = 50;
+
+      for (int i = 0; i < nfft; i++) {
+        float dist = std::abs(i - centerBin);
+        if (dist < spread) {
+          float factor = 1.0f - (dist / spread);
+          magnitudes[i] += centerGain * factor;
+        }
+      }
     }
 
     {
       std::lock_guard<std::mutex> lock(_renderMtx);
-      _renderBuffer = std::move(magnitudes);
+      std::copy_backward(_wfData.begin(),
+                         _wfData.begin() + (WF_HEIGHT - 1) * WF_WIDTH,
+                         _wfData.end());
+      std::copy(magnitudes.begin(), magnitudes.end(), _wfData.begin());
+      _renderBuffer = magnitudes;
     }
   }
+
+  fftwf_destroy_plan(plan);
+  fftwf_free(in);
+  fftwf_free(out);
 }
 
 std::vector<float> Spectrum::GetCurrentData() {
   std::lock_guard<std::mutex> lock(_renderMtx);
   return _renderBuffer;
+}
+
+std::vector<float> Spectrum::GetWfData() {
+  std::lock_guard<std::mutex> lock(_renderMtx);
+  return _wfData;
+}
+
+void Spectrum::GenerateHannWindow(int n) {
+  _window.resize(n);
+  for (int i = 0; i < n; ++i) {
+    _window[i] = 0.5f * (1.0f - cosf(2.0f * M_PI * i / (n - 1)));
+  }
 }

@@ -35,6 +35,7 @@ private:
   void BuildScanFrame();
   void BuildAnalyzingFrame();
   void BuildSpectrumFrame();
+  void BuildWaterfall();
 
   void DrawStationTable();
 

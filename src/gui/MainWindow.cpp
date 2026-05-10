@@ -90,6 +90,7 @@ void MainWindow::Run() {
       break;
     case State::eSPECTRUM_RUNNING:
       BuildSpectrumFrame();
+      BuildWaterfall();
       break;
 
     default:
@@ -145,16 +146,150 @@ void MainWindow::BuildSpectrumFrame() {
     return;
   }
 
-  if (!_context._currentSpectrumData.empty()) {
-    ImGui::Text("Frequency: %s",
-                _context._selectedStation.value().freq.c_str());
+  if (!_context._currentSpectrumData.empty() &&
+      _context._selectedStation.has_value()) {
+    const float left_margin = 65.0f;
+    const float right_margin = 20.0f;
+    const float graph_height = 300.0f;
+
+    ImVec2 canvas_size =
+        ImVec2(ImGui::GetContentRegionAvail().x - left_margin - right_margin,
+               graph_height);
+    ImDrawList *draw_list = ImGui::GetWindowDrawList();
+    ImVec2 startPos = ImGui::GetCursorScreenPos();
+
+    draw_list->AddRectFilled(ImVec2(startPos.x + left_margin, startPos.y),
+                             ImVec2(startPos.x + left_margin + canvas_size.x,
+                                    startPos.y + canvas_size.y),
+                             ImColor(10, 15, 25, 255));
+
+    float dbSteps[] = {0.0f, -20.0f, -40.0f, -60.0f, -80.0f, -100.0f};
+    for (float db : dbSteps) {
+      float normY = 1.0f - (db - (-110.0f)) / (0.0f - (-110.0f));
+      float yPos = startPos.y + normY * canvas_size.y;
+
+      draw_list->AddLine(ImVec2(startPos.x + left_margin, yPos),
+                         ImVec2(startPos.x + left_margin + canvas_size.x, yPos),
+                         ImColor(255, 255, 255, 30));
+
+      char db_buf[16];
+      snprintf(db_buf, sizeof(db_buf), "%d", (int)db);
+      draw_list->AddText(ImVec2(startPos.x + 10, yPos - 7),
+                         ImColor(180, 180, 180), db_buf);
+    }
+
+    float centerFreq = std::stof(_context._selectedStation.value().freq);
+    float bandwidth = 2.0f;
+    float halfBw = bandwidth / 2.0f;
+    float stepSizeMhz = 0.2f;
+    float startGridFreq =
+        ceilf((centerFreq - halfBw) / stepSizeMhz) * stepSizeMhz;
+
+    for (float f = startGridFreq; f <= (centerFreq + halfBw);
+         f += stepSizeMhz) {
+      float normX = (f - (centerFreq - halfBw)) / bandwidth;
+      float xPos = startPos.x + left_margin + normX * canvas_size.x;
+
+      if (xPos < startPos.x + left_margin ||
+          xPos > startPos.x + left_margin + canvas_size.x)
+        continue;
+
+      draw_list->AddLine(ImVec2(xPos, startPos.y),
+                         ImVec2(xPos, startPos.y + canvas_size.y),
+                         ImColor(255, 255, 255, 30));
+
+      if (std::abs(fmod(f + 0.001f, 0.4f)) < 0.05f) {
+        char fLabel[16];
+        snprintf(fLabel, sizeof(fLabel), "%.1f", f);
+        draw_list->AddText(ImVec2(xPos - 15, startPos.y + canvas_size.y + 5),
+                           ImColor(150, 150, 150), fLabel);
+      }
+    }
+
+    ImGui::SetCursorScreenPos(ImVec2(startPos.x + left_margin, startPos.y));
     ImGui::PlotLines("##Spectrum", _context._currentSpectrumData.data(),
-                     _context._currentSpectrumData.size(), 0, nullptr, 0.0f,
-                     1.0f, ImVec2(-1, 300));
-    ImGui::TextColored(ImVec4(0, 1, 0, 1), "Live Iq Steam Active");
-  } else {
-    ImGui::Text("Waiting for SDR data...");
+                     _context._currentSpectrumData.size(), 0, nullptr, -110.0f,
+                     0.0f, canvas_size);
+
+    float centerX = startPos.x + left_margin + canvas_size.x * 0.5f;
+    draw_list->AddLine(ImVec2(centerX, startPos.y),
+                       ImVec2(centerX, startPos.y + canvas_size.y),
+                       ImColor(255, 40, 40, 200), 2.0f);
+
+    ImGui::SetCursorScreenPos(
+        ImVec2(startPos.x, startPos.y + canvas_size.y + 40));
   }
+}
+
+void MainWindow::BuildWaterfall() {
+  if (_context._currentWaterfall.empty())
+    return;
+
+  ImDrawList *draw_list = ImGui::GetWindowDrawList();
+  ImVec2 startPos = ImGui::GetCursorScreenPos();
+
+  const float left_margin = 65.0f;
+  const float right_margin = 20.0f;
+  float wf_width =
+      ImGui::GetContentRegionAvail().x - left_margin - right_margin;
+  float wf_height = 250.0f;
+
+  const float minDb = -100.0f;
+  const float maxDb = -30.0f;
+
+  float l_bar_width = 10.0f;
+  float l_x_pos = startPos.x + 40.0f;
+
+  draw_list->AddText(ImVec2(startPos.x + 10, startPos.y - 20),
+                     ImColor(200, 200, 200), "dB");
+
+  for (int i = 0; i < 100; i++) {
+    float intensity = 1.0f - ((float)i / 100.0f);
+    ImU32 col = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(intensity, intensity * 0.8f, 1.0f - intensity, 1.0f));
+    draw_list->AddRectFilled(
+        ImVec2(l_x_pos, startPos.y + i * (wf_height / 100.0f)),
+        ImVec2(l_x_pos + l_bar_width,
+               startPos.y + (i + 1) * (wf_height / 100.0f)),
+        col);
+  }
+
+  float labels[] = {maxDb, (maxDb + minDb) / 2.0f, minDb};
+  for (int i = 0; i < 3; i++) {
+    float y_off = (i / 2.0f) * wf_height;
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", (int)labels[i]);
+
+    draw_list->AddText(ImVec2(l_x_pos - 30, startPos.y + y_off - 7),
+                       ImColor(150, 150, 150), buf);
+  }
+
+  float wf_x_start = startPos.x + left_margin;
+  const int bins = 1024;
+  const int history = 100;
+  float col_w = wf_width / (float)bins;
+  float row_h = wf_height / (float)history;
+
+  for (int y = 0; y < history; y++) {
+    for (int x = 0; x < bins; x++) {
+      float val = _context._currentWaterfall[y * bins + x];
+      float intensity = std::clamp((val - minDb) / (maxDb - minDb), 0.0f, 1.0f);
+
+      ImU32 color = ImGui::ColorConvertFloat4ToU32(
+          ImVec4(intensity, intensity * 0.8f, 1.0f - intensity, 1.0f));
+      draw_list->AddRectFilled(
+          ImVec2(wf_x_start + x * col_w, startPos.y + y * row_h),
+          ImVec2(wf_x_start + (x + 1) * col_w, startPos.y + (y + 1) * row_h),
+          color);
+    }
+  }
+
+  float centerX = wf_x_start + wf_width * 0.5f;
+  draw_list->AddLine(ImVec2(centerX, startPos.y),
+                     ImVec2(centerX, startPos.y + wf_height),
+                     ImColor(255, 255, 255, 120), 1.0f);
+
+  ImGui::Dummy(ImVec2(0, wf_height + 10.0f));
 }
 
 void MainWindow::DrawStationTable() {

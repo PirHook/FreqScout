@@ -78,6 +78,7 @@ void StateManager::Update(double dt, AppContext &ctx) {
   }
   case State::eSPECTRUM_RUNNING: {
     ctx._currentSpectrumData = _spectrum.GetCurrentData();
+    ctx._currentWaterfall = _spectrum.GetWfData();
     break;
   }
   case State::eSPECTRUM_STOP: {
